@@ -1,10 +1,10 @@
-import subprocess, time, json
-
-from readline_noblock import nonblocking_readlines
+import subprocess, json, tempfile
 
 docker = "docker"
 moniter = "WwDocker-"
 strings = (docker, moniter)
+
+dsh_path = "/nfs/users/nfs_c/cgppipe/.dsh/group/cgp5"
 
 class Moniter(object):
     def __init__(self):
@@ -12,8 +12,22 @@ class Moniter(object):
         cluster_dict = self.find_docker()
         #Parse it
         node_data = self.parse_cluster(cluster_dict)
+        #Continue parsing hidden nodes
+        #self.parse_hidden_nodes(node_data["hidden"])
         #Output
         print json.dumps(node_data, indent = 4)
+
+    def parse_hidden_nodes(self, hidden_nodes):
+        tmpfile = tempfile.NamedTemporaryFile(prefix = "docker_moniter_")
+        tmpfile.write("\n".join(hidden_nodes.keys()))
+        cmd = "dsh -f %s -M 'grep -Fc \"UPLOADED FILE AFTER \" /cgp/datastore/oozie-*/generated-scripts/*vcfUpload_*.stdout'"%tmpfile.name
+        sub = subprocess.Popen(cmd, shell=True,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+        stdout_buf, stderr_buf = sub.communicate()
+        print cmd
+        print stdout_buf
+        print stderr_buf
 
     def parse_cluster(self, cluster):
         node_data = {"idle hosts": {},
@@ -40,44 +54,38 @@ class Moniter(object):
         sub = subprocess.Popen(cmd, shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE)
-        #Setup stdout and stderr
-        #When read, if there is no data, will return None intead of blocking
-        stdout = nonblocking_readlines(sub.stdout)
-        stderr = nonblocking_readlines(sub.stderr)
         #Fill the output dict with every farm node
         nodes = {}
-        for i in range(1,4):
-            for j in range(1,17):
-                nodes["cgp-5-%d-%02d"%(i,j)] = []
-        #While the command isnt finished
-        while 1:
-            try:
-                #stdout.next() doesnt strip the newline character
-                k, v = self.process_line(stdout.next()[:-1], stderr.next()[:-1])
-                #If there is data
-                if k is not None:
-                    nodes[k].append(v)
-                else:
-                    #Aim to reduce CPU time
-                    time.sleep(0.5)
-                #print k,v
-            except StopIteration:
-                pass#print "STOPITER"
+        node_names = open(dsh_path)
+        for name in node_names:
+            nodes[name.rstrip()] = []
+        node_names.close()
+        #Wait until cmd is finished
+        stdout_buf, stderr_buf = sub.communicate()
+        #Parse stdout
+        for stdout in stdout_buf.split("\n"):
+            node, prog = self.process_stdout(stdout)
+            if node is not None:
+                nodes[node].append(prog)
+        #Parse stderr
+        for stderr in stderr_buf.split("\n"):
+            node, prog = self.process_stderr(stderr)
+            if node is not None: 
+                nodes[node].append(prog)
         return nodes
 
-    def process_line(self, stdout, stderr):
-        #Stderr has higher priority (and if anything returns on it, stdout should be empty)
-        if stderr:
-            #Return the node and the error message
-            return stderr.split(":")[0], "error: " + stderr
-        if stdout:
-            print stdout
-            for string in strings:
-                #If the given string is found in the line
-                if stdout.find(string) != -1:
-                    #Return the node and the string found
-                    return stdout.split(":")[0], string
+    def process_stdout(self, stdout):
+        for string in strings:
+            #If the given string is found in the line
+            if stdout.find(string) != -1:
+                #Return the node and the string found
+                return stdout.split(":")[0], string
         return None, None
+
+    def process_stderr(self, stderr):
+        #Return the node and the error message
+        if stderr == "": return None, None
+        return stderr.split(":")[0], "error: " + stderr
 
 def main():
     Moniter()

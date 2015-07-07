@@ -27,6 +27,7 @@ def nonblocking_readlines(f):
             if buf:
                 yield buf.decode(enc)
                 buf.clear()
+            print block, buf
             break
 
         buf.extend(block)
@@ -45,3 +46,4 @@ def nonblocking_readlines(f):
                     buf = buf[(r+2):]
                 else:
                     buf = buf[(r+1):]
+    print "BREAK"

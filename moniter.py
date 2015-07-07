@@ -15,7 +15,8 @@ class Moniter(object):
         #Continue parsing hidden nodes
         self.parse_hidden_nodes(node_data["hidden"])
         #Output
-        print json.dumps(node_data, indent = 4)
+        print json.dumps(node_data, indent = 4, sort_keys = True)
+
 
     def parse_hidden_nodes(self, hidden_nodes):
         #Parse the nodes that aren't running either the docker or the monitering system

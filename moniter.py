@@ -12,36 +12,36 @@ class Moniter(object):
         cluster_dict = self.find_docker()
         #Parse it
         node_data = self.parse_cluster(cluster_dict)
+        #Continue parsing working nodes
+        self.parse_working_nodes(node_data["working"])
+        self.parse_working_nodes(node_data["headless hosts"])
         #Continue parsing hidden nodes
         self.parse_hidden_nodes(node_data["hidden"])
         #Output
         print json.dumps(node_data, indent = 4, sort_keys = True)
 
+    def parse_working_nodes(self, nodes):
+        cmd = "dsh -f %s -M 'ls -l /cgp/datastore/*.ini'"
+        stdout_buf, _ = self.parse_nodes(nodes.keys(), cmd)
+        for node in stdout_buf.rstrip().split("\n"):
+            node_id, info = node.split(":", 1)
+            nodes[node_id] = info[1:]
 
     def parse_hidden_nodes(self, hidden_nodes):
         #Parse the nodes that aren't running either the docker or the monitering system
-        #A temp file is needed for the dsh command with the names of every node it is to run the command on
-        tmp_name = self.make_tmp_file("\n".join(hidden_nodes.keys()))
-        cmd = "dsh -f %s -M 'grep -Fc \"UPLOADED FILE AFTER \" /cgp/datastore/oozie-*/generated-scripts/*vcfUpload_*.stdout'"%tmp_name
+        cmd = "dsh -f %s -M 'grep -Fc \"UPLOADED FILE AFTER \" /cgp/datastore/oozie-*/generated-scripts/*vcfUpload_*.stdout'"
         #Run the command
-        sub = subprocess.Popen(cmd, shell=True,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
-        stdout_buf, stderr_buf = sub.communicate()
-        os.remove(tmp_name)
+        stdout_buf, stderr_buf = self.parse_nodes(hidden_nodes.keys(), cmd)
         #If the string 'UPLOADED FILE AFTER ' wasn't found, update the list
         for node in self.get_nodes(stderr_buf):
             hidden_nodes[node] = "Further analysis necessary"
         #For every other node, get the log data
         nodes = self.get_nodes(stdout_buf)
-        tmp_name = self.make_tmp_file("\n".join(nodes))
-        cmd = "dsh -f %s -M 'ls /cgp/datastore/*.ini'"%tmp_name
-        sub = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-        stdout_buf, _ = sub.communicate()
+        cmd = "dsh -f %s -M 'ls /cgp/datastore/*.ini'"
+        stdout_buf, _ = self.parse_nodes(nodes, cmd)
         for node_info in stdout_buf.rstrip().split("\n"):
             node, info = node_info.split(":")
             hidden_nodes[node] = info[1:]
-        os.remove(tmp_name)
     
     def get_nodes(self, out):
         #Returns the names of nodes in a list of nodes
@@ -54,6 +54,16 @@ class Moniter(object):
         tmp_name = tmpfile.name
         tmpfile.close()
         return tmp_name
+
+    def parse_nodes(self, nodes, raw_cmd):
+        tmp_name = self.make_tmp_file("\n".join(nodes))
+        cmd = raw_cmd%tmp_name
+        sub = subprocess.Popen(cmd, shell=True,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+        buffer = sub.communicate()
+        os.remove(tmp_name)
+        return buffer
 
     def parse_cluster(self, cluster):
         node_data = {"idle hosts": {},
@@ -71,8 +81,10 @@ class Moniter(object):
             elif sorted(node) == [moniter, docker]: #Both are running
                 node_data["working"][node_id] = ""
             else: #The only other possability is there's an error
-                assert(node[0][:5] == "error")
-                node_data["problem hosts"][node_id] = ":".join(node[0].split(":")[2:])[1:]
+                if node[0][:5] == "error":
+                    node_data["problem hosts"][node_id] = node[0].split(":", 2)[2][1:]
+                else:
+                    node_data["problem hosts"][node_id] = "Running unexpected set of programs: %s"%node
         return node_data
 
     def find_docker(self):

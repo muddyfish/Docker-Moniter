@@ -10,6 +10,9 @@ dsh_path = "/nfs/users/nfs_c/cgppipe/.dsh/group/cgp5"
 
 class Moniter(object):
     def __init__(self):
+        pass
+
+    def run(self):
         #Get the information
         cluster_dict = self.find_docker()
         #Parse it
@@ -20,7 +23,7 @@ class Moniter(object):
         #Continue parsing hidden nodes
         self.parse_hidden_nodes(node_data["hidden"])
         #Output
-        print json.dumps(node_data, indent = 4, sort_keys = True)
+        return json.dumps(node_data, indent = 4, sort_keys = True)
 
     def find_docker(self):
         cmd = "dsh -Mg cgp5 'ps -fu cgppipe'"
@@ -129,7 +132,7 @@ class Moniter(object):
         return tmp_name
 
 def main():
-    Moniter()
+    print Moniter().run()
 
 if __name__ == "__main__":
     main()

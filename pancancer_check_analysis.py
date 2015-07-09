@@ -1,4 +1,5 @@
-import urllib2, urlparse, re, gzip, json
+import urllib2, re, gzip, json
+import posixpath
 try:
     import cStringIO as StringIO
 except ImportError:
@@ -9,7 +10,10 @@ workflow_id = "sanger_workflow"
 DEFAULT_PATH = "http://pancancer.info/gnos_metadata/latest/"
 GITHUB_URL = "https://github.com/"
 REPO_URL = "ICGC-TCGA-PanCancer/pcawg-operations/tree/develop/variant_calling/%s/whitelists/sanger"%workflow_id
-FILE_LOCATIONS = 'ICGC-TCGA-PanCancer/pcawg-operations/blob/develop/variant_calling/sanger_workflow/whitelists/sanger/.*?"'
+SEARCH_FILES = 'ICGC-TCGA-PanCancer/pcawg-operations/blob/develop/variant_calling/sanger_workflow/whitelists/sanger/.*?"'
+RAW_DIR = "https://raw.github.com/ICGC-TCGA-PanCancer/pcawg-operations/master/variant_calling/sanger_workflow/whitelists/sanger/"
+
+opener = urllib2.build_opener()
 
 class AnalysisCheck(object):
     def __init__(self):
@@ -18,10 +22,10 @@ class AnalysisCheck(object):
         #self.load_json_data(json_data)
     
     def find_json_gz(self):
-        directory = urllib2.urlopen(DEFAULT_PATH)
+        directory = self.open_url(DEFAULT_PATH)
         filename = re.search("donor_p_\d+\.jsonl\.gz", directory.read()).group()
         directory.close()
-        gz_file = StringIO.StringIO(urllib2.urlopen(urlparse.urljoin(DEFAULT_PATH, filename)).read())
+        gz_file = StringIO.StringIO(opener.open(posixpath.join(DEFAULT_PATH, filename)).read())
         json_data = map(json.loads, gzip.GzipFile(fileobj=gz_file).readlines())
         return json_data
 
@@ -39,14 +43,27 @@ class AnalysisCheck(object):
         print "Pending:\n", "\n".join(sorted(map(lambda x: x.replace("::", "\t"), pending)))
 
     def load_donors(self):
-        repo_dir = urllib2.urlopen(urlparse.urljoin(GITHUB_URL, REPO_URL))
-        for file_match in re.findall(FILE_LOCATIONS, repo_dir.read()):
-            self.load_donor_file(urlparse.urljoin(GITHUB_URL, file_match[:-1]))
+        repo_dir = self.open_url(posixpath.join(GITHUB_URL, REPO_URL))
+        for file_match in re.findall(SEARCH_FILES, repo_dir.read()):
+            filename = file_match.split(posixpath.sep)[-1][:-1]
+            self.load_donor_file(posixpath.join(RAW_DIR, filename))
+            print "Returned"
         #donors = map(lambda line: line[:-1].replace("\t", "::"), donor_file.readlines())
         #return donors
 
     def load_donor_file(self, donor_name):
         print donor_name
+        donor_file = self.open_url(donor_name, api = True)
+        print "READING"
+        print donor_file.read()
+        donor_file.close()
+
+    def open_url(self, url, api = False):
+        print url
+        headers = {}
+        if api: headers = {'Accept': "text/html; charset=utf-8"}
+        request = urllib2.Request(url, None, headers)
+        return urllib2.urlopen(request)
 
 def main():
     AnalysisCheck()

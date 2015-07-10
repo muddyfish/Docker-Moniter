@@ -1,7 +1,6 @@
 #Python-2.7.9
 import requests, re, gzip, json, os
 import posixpath
-import ssl
 from requests.adapters import HTTPAdapter
 try:
     import cStringIO as StringIO

@@ -1,4 +1,4 @@
-import urllib2, re, gzip, json
+import requests, re, gzip, json, os
 import posixpath
 try:
     import cStringIO as StringIO
@@ -8,12 +8,13 @@ except ImportError:
 workflow_id = "sanger_workflow"
 
 DEFAULT_PATH = "http://pancancer.info/gnos_metadata/latest/"
-GITHUB_URL = "https://github.com/"
+GITHUB_URL = "http://github.com/"
 REPO_URL = "ICGC-TCGA-PanCancer/pcawg-operations/tree/develop/variant_calling/%s/whitelists/sanger"%workflow_id
 SEARCH_FILES = 'ICGC-TCGA-PanCancer/pcawg-operations/blob/develop/variant_calling/sanger_workflow/whitelists/sanger/.*?"'
-RAW_DIR = "https://raw.github.com/ICGC-TCGA-PanCancer/pcawg-operations/master/variant_calling/sanger_workflow/whitelists/sanger/"
+RAW_DIR = "http://raw.github.com/ICGC-TCGA-PanCancer/pcawg-operations/master/variant_calling/sanger_workflow/whitelists/sanger/"
 
-opener = urllib2.build_opener()
+proxies = {"http" : "http://wwwcache.sanger.ac.uk:3128",
+           "https": "http://wwwcache.sanger.ac.uk:3128"}
 
 class AnalysisCheck(object):
     def __init__(self):
@@ -52,18 +53,14 @@ class AnalysisCheck(object):
         #return donors
 
     def load_donor_file(self, donor_name):
-        print donor_name
-        donor_file = self.open_url(donor_name, api = True)
-        print "READING"
+        donor_file = self.open_url(donor_name)
         print donor_file.read()
         donor_file.close()
 
-    def open_url(self, url, api = False):
-        print url
-        headers = {}
-        if api: headers = {'Accept': "text/html; charset=utf-8"}
-        request = urllib2.Request(url, None, headers)
-        return urllib2.urlopen(request)
+    def open_url(self, url):
+        r = requests.get(url, proxies=proxies)
+        print r.content
+        return r.raw
 
 def main():
     AnalysisCheck()
